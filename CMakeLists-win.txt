@@ -1,0 +1,103 @@
+cmake_minimum_required(VERSION 3.28)
+project(yolov8_trtx_v10)
+
+set(CMAKE_CXX_STANDARD 11)
+# 设置nvcc编译cu文件时候使用utf-8编码
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler /utf-8")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
+
+enable_language(CUDA)
+
+# 设置cuda多个框架支持
+set(CMAKE_CUDA_ARCHITECTURES 75 86 89)
+message(STATUS "CMAKE_CUDA_ARCHITECTURES: ${CMAKE_CUDA_ARCHITECTURES}")
+
+# OpenCV
+set(OpenCV_DIR E:\\Opencv\\install\\opencv-4.8.0\\build)
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
+link_directories(${OpenCV_LIB_DIR})
+
+# CUDA
+set(CUDA_TOOLKIT_ROOT_DIR C:\\Program\ Files\\NVIDIA\ GPU\ Computing\ Toolkit\\CUDA\\v11.8)
+include_directories(${CUDA_TOOLKIT_ROOT_DIR}/include)
+link_directories(${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+
+# TensorRT
+#set(TENSORRT_ROOT E:\\TensorRT\\TensorRT-8.6.1.6)
+set(TENSORRT_ROOT E:\\TensorRT\\TensorRT-10.2.0.19)
+include_directories(${TENSORRT_ROOT}/include)
+link_directories(${TENSORRT_ROOT}/lib)
+
+# 判断TENSORRT_ROOT路径中的version如果路径中第一个.前大于8
+# 获取所有版本文件
+file(GLOB TENSORRT_VERSION_FILES "${TENSORRT_ROOT}/include/NvInferVersion.h")
+# 读取版本文件
+file(STRINGS ${TENSORRT_VERSION_FILES} TENSORRT_VERSION_LINES
+        LIMIT_COUNT 1  # 只读取第一行
+        REGEX "#define NV_TENSORRT_MAJOR [0-9]+"  # 匹配版本号定义行
+)
+message(STATUS "  TENSORRT_VERSION_LINES: ${TENSORRT_VERSION_LINES}")
+# 解析版本号
+string(REGEX REPLACE "#define NV_TENSORRT_MAJOR ([0-9]+)" "\\1" TENSORRT_VERSION_MAJOR ${TENSORRT_VERSION_LINES})
+message(STATUS "  TENSORRT_VERSION_MAJOR: ${TENSORRT_VERSION_MAJOR}")
+# 判断版本号是否大于等于10
+if (TENSORRT_VERSION_MAJOR GREATER_EQUAL 10)
+    message(STATUS "  TensorRT version is greater than or equal to 10.")
+    link_libraries(
+            opencv_core
+            opencv_highgui
+            opencv_imgproc
+            opencv_imgcodecs
+            cudart
+            cublas
+            nvinfer_10
+    )
+else ()
+    message(STATUS "  TensorRT version is less than 10.")
+    link_libraries(
+            opencv_core
+            opencv_highgui
+            opencv_imgproc
+            opencv_imgcodecs
+            cudart
+            cublas
+            nvinfer
+    )
+endif ()
+
+include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/plugin)
+include_directories(${CMAKE_SOURCE_DIR}/src)
+link_directories(${CMAKE_SOURCE_DIR}/lib)
+
+add_definitions(-DNOMINMAX)
+
+add_definitions(-DAPI_EXPORTS)
+
+file(GLOB_RECURSE SRCS ${CMAKE_SOURCE_DIR}/src/*.cpp ${CMAKE_SOURCE_DIR}/src/*.cu)
+file(GLOB_RECURSE PLUGIN_SRCS ${PROJECT_SOURCE_DIR}/plugin/*.cu)
+
+add_library(myplugins SHARED ${PLUGIN_SRCS})
+target_link_libraries(myplugins nvinfer_10 nvinfer_plugin_10 cudart)
+
+add_executable(yolov8_cls yolov8_cls.cpp ${SRCS})
+target_link_libraries(yolov8_cls myplugins)
+
+add_executable(yolov8_det yolov8_det.cpp ${SRCS})
+target_link_libraries(yolov8_det nvinfer_10)
+target_link_libraries(yolov8_det cudart)
+target_link_libraries(yolov8_det myplugins)
+target_link_libraries(yolov8_det ${OpenCV_LIBS})
+
+add_executable(yolov8_seg yolov8_seg.cpp ${SRCS})
+target_link_libraries(yolov8_seg nvinfer_10)
+target_link_libraries(yolov8_seg cudart)
+target_link_libraries(yolov8_seg myplugins)
+target_link_libraries(yolov8_seg ${OpenCV_LIBS})
+
+add_executable(yolov8_pose yolov8_pose.cpp ${SRCS})
+target_link_libraries(yolov8_pose nvinfer_10)
+target_link_libraries(yolov8_pose cudart)
+target_link_libraries(yolov8_pose myplugins)
+target_link_libraries(yolov8_pose ${OpenCV_LIBS})
